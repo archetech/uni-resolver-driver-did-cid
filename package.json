@@ -1,0 +1,26 @@
+{
+  "name": "uni-resolver-driver-did-cid",
+  "version": "0.1.0",
+  "description": "Universal Resolver driver for did:cid (Archon Protocol)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Test with: curl http://localhost:4250/1.0/identifiers/did:cid:bagaaieraxdxq4fm2kjh6yqjxjor3t2idczkmxd4v7in4u353fa6m6sms2pnq\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/archetech/archon"
+  },
+  "keywords": [
+    "did",
+    "decentralized-identity",
+    "universal-resolver",
+    "archon",
+    "did:cid"
+  ],
+  "author": "Archetech <contact@archetech.com>",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
