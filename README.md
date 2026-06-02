@@ -19,7 +19,7 @@ of the initial DID document. This provides:
 ## Specifications
 
 - DID Method name: `cid`
-- DID Method Specification: [did:cid spec](https://github.com/archetech/archon/blob/main/docs/did-cid-spec.md)
+- DID Method Specification: [did:cid spec](https://github.com/archetech/archon/blob/main/docs/scheme.md)
 - Archon Protocol: <https://archon.technology>
 - W3C DID Core 1.0: <https://www.w3.org/TR/did-core/>
 - DID Resolution: <https://w3c.github.io/did-resolution/>
@@ -144,11 +144,30 @@ curl http://localhost:8080/1.0/identifiers/did:cid:bagaaieraxdxq4fm2kjh6yqjxjor3
 - **Health check failing** — `curl http://localhost:4250/health`; a healthy response reports the
   configured `gatekeeper` URL.
 
+## Publishing the Image
+
+The Universal Resolver pulls this driver as a public container image. To publish a release to GHCR:
+
+```bash
+# Build for the version you're releasing (must match package.json "version")
+docker build -t ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0 .
+
+# Authenticate to GHCR with a token that has the write:packages scope
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
+
+docker push ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0
+```
+
+**One-time step (org owner):** after the first push, open the package at
+`https://github.com/orgs/archetech/packages` and set its visibility to **Public** — the Universal
+Resolver cannot pull a private image. Later pushes to the same package stay public.
+
 ## Updating the Driver
 
-Driver versions track the Docker image tag (never `:latest`). To release a new version, bump the
-`version` in `package.json`, rebuild and push the image with the new tag, and update the image
-reference in `docker-compose.yml` and the driver table in the root `README.md`.
+Driver versions track the Docker image tag (never `:latest` in the Universal Resolver config). To
+release a new version: bump `version` in `package.json`, build and push the image with the new tag
+(above), and update the image reference in the Universal Resolver's `docker-compose.yml` and the
+driver table in its root `README.md`.
 
 ## Contact
 
