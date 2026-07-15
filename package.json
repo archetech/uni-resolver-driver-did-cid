@@ -9,8 +9,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/archetech/archon"
+    "url": "git+https://github.com/archetech/uni-resolver-driver-did-cid.git"
   },
+  "homepage": "https://github.com/archetech/uni-resolver-driver-did-cid#readme",
   "keywords": [
     "did",
     "decentralized-identity",
@@ -18,7 +19,7 @@
     "archon",
     "did:cid"
   ],
-  "author": "Archetech <contact@archetech.com>",
+  "author": "Archetech <flaxscrip@pm.me>",
   "license": "Apache-2.0",
   "dependencies": {
     "express": "^4.18.2"

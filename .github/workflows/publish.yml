@@ -1,0 +1,69 @@
+name: Publish Docker image
+
+# Publishes ghcr.io/archetech/uni-resolver-driver-did-cid:<version>.
+# Trigger by pushing a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`),
+# or manually from the Actions tab. Authenticates with the built-in GITHUB_TOKEN, so
+# anyone with push access to this repo can release — no personal registry key required.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.1.0). Defaults to package.json "version".'
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: archetech/uni-resolver-driver-did-cid
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Resolve the version and enforce that a pushed tag matches package.json.
+      # The Universal Resolver requires a pinned version and forbids ":latest".
+      - name: Resolve version
+        id: version
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+              echo "::error::Tag v$TAG_VERSION does not match package.json version $PKG_VERSION"
+              exit 1
+            fi
+            VERSION="$PKG_VERSION"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+            [ -z "$VERSION" ] && VERSION="$PKG_VERSION"
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
+          # Links the GHCR package to this repo so it can inherit repo visibility.
+          labels: |
+            org.opencontainers.image.source=https://github.com/archetech/uni-resolver-driver-did-cid
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+            org.opencontainers.image.licenses=Apache-2.0

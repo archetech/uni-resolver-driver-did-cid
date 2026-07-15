@@ -3,8 +3,9 @@
 A [Universal Resolver](https://github.com/decentralized-identity/universal-resolver) driver for the
 **did:cid** method, used by the [Archon Protocol](https://archon.technology).
 
-This driver resolves `did:cid` identifiers by proxying resolution requests to an Archon **gatekeeper**
-node and returning a W3C [DID Resolution Result](https://w3c.github.io/did-resolution/#did-resolution-result).
+This driver resolves `did:cid` identifiers by proxying to an Archon **gatekeeper** node's Universal
+Resolver-style `/1.0/identifiers/{did}` endpoint and relaying the W3C
+[DID Resolution Result](https://w3c.github.io/did-resolution/#did-resolution-result) it returns.
 
 ## About did:cid
 
@@ -20,13 +21,13 @@ of the initial DID document. This provides:
 
 - DID Method name: `cid`
 - DID Method Specification: [did:cid spec](https://github.com/archetech/archon/blob/main/docs/scheme.md)
+- W3C DID Method Registry entry: [DID Extensions — Methods](https://www.w3.org/TR/did-extensions-methods/) (registered)
 - Archon Protocol: <https://archon.technology>
 - W3C DID Core 1.0: <https://www.w3.org/TR/did-core/>
 - DID Resolution: <https://w3c.github.io/did-resolution/>
 
-> **Note:** `did:cid` is not yet listed in the
-> [W3C DID Method Registry](https://w3c.github.io/did-spec-registries/#did-methods). Registration is
-> in progress; see the PR checklist before this driver is merged into the default configuration.
+> **Note:** `did:cid` is registered in the W3C
+> [DID Extensions — Methods](https://www.w3.org/TR/did-extensions-methods/) registry.
 
 ## Example DIDs
 
@@ -39,24 +40,27 @@ did:cid:bagaaierajzwcicueqdkbgk75lgekdmvtbo5zv3spq2p4f7d7ow42urlwi32a
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/1.0/identifiers/{did}` | GET | Resolve a `did:cid` and return a DID Resolution Result (`application/did+ld+json`). |
+| `/1.0/identifiers/{did}` | GET | Resolve a `did:cid` and return a DID Resolution Result. Honors `Accept: application/did+ld+json` (default) or `application/did+json`; the client's `Accept` is forwarded to the gatekeeper and the returned `didResolutionMetadata.contentType` is echoed. |
 | `/1.0/methods` | GET | List supported DID methods — returns `["cid"]`. |
 | `/health` | GET | Liveness probe — returns `{ status, driver, version, gatekeeper }`. |
 
-The driver returns standard DID Resolution metadata errors:
+The gatekeeper returns a DID Resolution Result with any failure carried in
+`didResolutionMetadata.error`; the driver relays the result and derives the HTTP status from it:
 
 | Condition | HTTP status | `didResolutionMetadata.error` |
 |-----------|-------------|-------------------------------|
-| DID does not start with `did:cid:` | 400 | `invalidDid` |
+| DID does not start with `did:cid:` (rejected locally) | 400 | `invalidDid` |
+| Gatekeeper reports `invalidDid` | 400 | `invalidDid` |
 | Gatekeeper has no record for the DID | 404 | `notFound` |
-| Gatekeeper unreachable / non-2xx | 502 | `internalError` |
+| Requested representation unavailable | 406 | `representationNotSupported` |
+| Gatekeeper unreachable / non-JSON response | 502 | `internalError` |
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4250` | Port the driver listens on. |
-| `ARCHON_GATEKEEPER_URL` | `https://archon.technology` | Base URL of the Archon gatekeeper. The driver calls `${ARCHON_GATEKEEPER_URL}/api/v1/did/{did}`. |
+| `ARCHON_GATEKEEPER_URL` | `https://archon.technology` | Base URL of the Archon gatekeeper. The driver calls `${ARCHON_GATEKEEPER_URL}/1.0/identifiers/{did}`. |
 
 ## Running Locally (Node.js)
 
@@ -146,34 +150,52 @@ curl http://localhost:8080/1.0/identifiers/did:cid:bagaaieraxdxq4fm2kjh6yqjxjor3
 
 ## Publishing the Image
 
-The Universal Resolver pulls this driver as a public container image. To publish a release to GHCR:
+The Universal Resolver pulls this driver as a public container image
+(`ghcr.io/archetech/uni-resolver-driver-did-cid`). Publishing is automated by
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml): pushing a `v<version>` tag builds
+and pushes the image to GHCR under that version. The workflow refuses to run if the tag does not
+match the `version` in `package.json`, and it never publishes `:latest` (the Universal Resolver
+requires a pinned version).
+
+Anyone with push access to this repo can cut a release — the workflow authenticates with the
+built-in `GITHUB_TOKEN`, so no personal registry key is required:
 
 ```bash
-# Build for the version you're releasing (must match package.json "version")
-docker build -t ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0 .
-
-# Authenticate to GHCR with a token that has the write:packages scope
-echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
-
-docker push ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0
+# 1. Bump "version" in package.json (e.g. to 0.1.0) and commit it.
+# 2. Tag the release and push the tag:
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-**One-time step (org owner):** after the first push, open the package at
-`https://github.com/orgs/archetech/packages` and set its visibility to **Public** — the Universal
-Resolver cannot pull a private image. Later pushes to the same package stay public.
+It can also be run from the **Actions** tab via *workflow_dispatch* (optionally overriding the version).
+
+**One-time step (org owner):** after the first publish, open the package at
+`https://github.com/orgs/archetech/packages`, set its visibility to **Public**, and confirm it is
+linked to this repository — the Universal Resolver cannot pull a private image. Later pushes stay
+public.
+
+<details>
+<summary>Manual publish (fallback, requires a token with <code>write:packages</code>)</summary>
+
+```bash
+docker build -t ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0 .
+echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
+docker push ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0
+```
+</details>
 
 ## Updating the Driver
 
 Driver versions track the Docker image tag (never `:latest` in the Universal Resolver config). To
-release a new version: bump `version` in `package.json`, build and push the image with the new tag
-(above), and update the image reference in the Universal Resolver's `docker-compose.yml` and the
-driver table in its root `README.md`.
+release a new version: bump `version` in `package.json`, push a matching `v<version>` tag to publish
+the image (see [Publishing the Image](#publishing-the-image)), and update the image reference in the
+Universal Resolver's `docker-compose.yml` and the driver table in its root `README.md`.
 
 ## Contact
 
 - **Maintainer:** Archetech (Archon Protocol)
 - **GitHub:** <https://github.com/archetech/archon>
-- **Email:** contact@archetech.com
+- **Email:** flaxscrip@pm.me
 
 ## License
 
