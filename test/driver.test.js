@@ -56,6 +56,25 @@ function resolve(accept) {
     });
 }
 
+// fetch() always sends an Accept header -- `*/*` when the caller gives none --
+// so a truly absent header needs the raw client. Without this the "no Accept"
+// case silently re-tests the wildcard.
+function resolveWithoutAccept() {
+    return new Promise((resolve, reject) => {
+        const request = http.request(
+            `${baseUrl}/1.0/identifiers/${DID}`,
+            { method: 'GET', setHost: true },
+            response => {
+                let body = '';
+                response.on('data', chunk => { body += chunk; });
+                response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body }));
+            }
+        );
+        request.on('error', reject);
+        request.end();
+    });
+}
+
 // The media type a client asks for is the one forwarded upstream. Before this,
 // pickRepresentation understood only the two document types, so a request for the
 // resolution envelope was silently downgraded and the driver reproduced the
@@ -77,20 +96,99 @@ test('forwards the representation the client asked for', async () => {
 });
 
 test('defaults to did+ld+json when the client names nothing it knows', async () => {
-    // Absent, wildcard, or a type this driver was never taught. Deliberately not
-    // a 406: the Universal Resolver sends headers whose conventions the driver
-    // does not control, and answering with something readable beats refusing.
-    for (const accept of [undefined, '*/*', 'application/*', 'application/xml']) {
+    // Wildcards, or a type this driver was never taught. Deliberately not a 406:
+    // the Universal Resolver sends headers whose conventions the driver does not
+    // control, and answering with something readable beats refusing.
+    for (const accept of ['*/*', 'application/*', 'application/xml']) {
         await resolve(accept);
         assert.equal(lastRequest.accept, 'application/did+ld+json', `Accept: ${accept}`);
     }
 });
 
-test('prefers the resolution envelope when a header names it alongside a document type', async () => {
-    reply = () => ({ status: 200, contentType: 'application/did-resolution', body: {} });
-    await resolve('application/did+ld+json, application/did-resolution');
+test('defaults to did+ld+json when there is no Accept header at all', async () => {
+    const response = await resolveWithoutAccept();
 
+    assert.equal(response.status, 200);
+    assert.equal(lastRequest.accept, 'application/did+ld+json');
+});
+
+test('honours q-values rather than the order types appear in', async () => {
+    // Substring matching used to take the first type it recognised, so a
+    // deprioritised envelope beat a preferred document type.
+    reply = () => ({ status: 200, contentType: 'application/did+json', body: {} });
+    await resolve('application/did-resolution;q=0.2, application/did+json;q=0.9');
+    assert.equal(lastRequest.accept, 'application/did+json');
+
+    reply = () => ({ status: 200, contentType: 'application/did-resolution', body: {} });
+    await resolve('application/did+json;q=0.3, application/did-resolution;q=0.8');
     assert.equal(lastRequest.accept, 'application/did-resolution');
+});
+
+test('treats q=0 as a refusal, not a preference', async () => {
+    reply = () => ({ status: 200, contentType: 'application/did+json', body: {} });
+    await resolve('application/did-resolution;q=0, application/did+json;q=1');
+
+    assert.equal(lastRequest.accept, 'application/did+json');
+});
+
+test('lets a wildcard supply quality only for the document types', async () => {
+    // `*/*` must never select the result envelope, whatever its weight --
+    // otherwise every lenient Universal Resolver client would start receiving
+    // application/did-resolution.
+    reply = () => ({ status: 200, contentType: 'application/did+ld+json', body: {} });
+    await resolve('*/*;q=1, application/did+json;q=0.5');
+    assert.equal(lastRequest.accept, 'application/did+ld+json');
+
+    // A wildcard outranking an explicit document type. did+json is the right
+    // answer -- it takes q=1 from `application/*` while did+ld+json is pinned at
+    // 0.5 by its own entry -- and what matters here is that the envelope,
+    // offered that same q=1, is not chosen.
+    //
+    // Pinned as behaviour, not as proof of the guard in qualityFor: SUPPORTED
+    // lists the document types first, so the envelope loses these ties anyway.
+    // Both mechanisms would have to go for this to break.
+    await resolve('application/*;q=1, application/did+ld+json;q=0.5');
+    assert.equal(lastRequest.accept, 'application/did+json');
+});
+
+test('lets an explicit q=0 exclude a type a wildcard would otherwise allow', async () => {
+    // RFC 7231 5.3.2: the most specific matching range supplies the quality.
+    // Taking the highest q across all matching ranges instead would hand the
+    // excluded type q=1 from the wildcard and forward exactly what was refused.
+    reply = () => ({ status: 200, contentType: 'application/did+json', body: {} });
+    await resolve('application/did+ld+json;q=0, */*;q=1');
+
+    assert.equal(lastRequest.accept, 'application/did+json');
+});
+
+test('defers to the gatekeeper when the client refuses everything it supports', async () => {
+    // Not the default here: the client named our types and set q=0 on them.
+    // Forwarding the header intact lets the gatekeeper answer 406, which this
+    // driver relays -- rather than serving a representation that was refused.
+    const accept = 'application/did-resolution;q=0, application/did+json;q=0, application/did+ld+json;q=0';
+    reply = () => ({
+        status: 406,
+        contentType: 'application/json',
+        body: { didDocument: null, didResolutionMetadata: { error: 'representationNotSupported' }, didDocumentMetadata: {} },
+    });
+
+    const response = await resolve(accept);
+
+    assert.equal(lastRequest.accept, accept, 'forwards the header rather than choosing for the client');
+    assert.equal(response.status, 406);
+});
+
+test('breaks an equal-weight tie by the order the client listed them', async () => {
+    // Equal q means the client is indifferent, so first-listed wins. Predictable
+    // and honest about the client's own ordering -- the previous substring match
+    // always preferred the envelope regardless of where it appeared.
+    reply = () => ({ status: 200, contentType: 'application/did-resolution', body: {} });
+    await resolve('application/did-resolution, application/did+ld+json');
+    assert.equal(lastRequest.accept, 'application/did-resolution');
+
+    reply = () => ({ status: 200, contentType: 'application/did+ld+json', body: {} });
+    await resolve('application/did+ld+json, application/did-resolution');
+    assert.equal(lastRequest.accept, 'application/did+ld+json');
 });
 
 // The Content-Type must describe the body. didResolutionMetadata.contentType

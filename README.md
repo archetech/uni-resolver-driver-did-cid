@@ -63,6 +63,16 @@ The gatekeeper returns a DID Resolution Result with any failure carried in
 | `application/did+json` | `application/did+json` |
 | `application/did+ld+json`, a wildcard, absent, or anything else | `application/did+ld+json` |
 
+Quality values are honoured: the highest-weighted supported representation wins,
+`q=0` excludes one, and per RFC 7231 the most specific matching range supplies a
+candidate's weight — so `application/did+ld+json;q=0, */*;q=1` does **not** serve
+the type that was excluded. A wildcard offers the document representations only;
+it never selects the result envelope.
+
+If a client names every supported representation and sets `q=0` on all of them,
+the header is forwarded to the gatekeeper unchanged so it can answer `406`,
+rather than the driver picking something that was explicitly refused.
+
 `application/did+ld+json` and `application/did+json` are DID **document**
 representation media types, while this endpoint returns the resolution result
 triple. A client that wants the body labelled for what it is asks for
