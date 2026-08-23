@@ -40,7 +40,7 @@ did:cid:bagaaierajzwcicueqdkbgk75lgekdmvtbo5zv3spq2p4f7d7ow42urlwi32a
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/1.0/identifiers/{did}` | GET | Resolve a `did:cid` and return a DID Resolution Result. Honors `Accept: application/did+ld+json` (default) or `application/did+json`; the client's `Accept` is forwarded to the gatekeeper and the returned `didResolutionMetadata.contentType` is echoed. |
+| `/1.0/identifiers/{did}` | GET | Resolve a `did:cid` and return a DID Resolution Result. See [Content negotiation](#content-negotiation). |
 | `/1.0/methods` | GET | List supported DID methods — returns `["cid"]`. |
 | `/health` | GET | Liveness probe — returns `{ status, driver, version, gatekeeper }`. |
 
@@ -55,12 +55,61 @@ The gatekeeper returns a DID Resolution Result with any failure carried in
 | Requested representation unavailable | 406 | `representationNotSupported` |
 | Gatekeeper unreachable / non-JSON response | 502 | `internalError` |
 
+## Content negotiation
+
+| `Accept` | Returned `Content-Type` |
+|----------|--------------------------|
+| `application/did-resolution` | `application/did-resolution` |
+| `application/did+json` | `application/did+json` |
+| `application/did+ld+json`, a wildcard, absent, or anything else | `application/did+ld+json` |
+
+Quality values are honoured: the highest-weighted supported representation wins,
+`q=0` excludes one, and per RFC 7231 the most specific matching range supplies a
+candidate's weight — so `application/did+ld+json;q=0, */*;q=1` does **not** serve
+the type that was excluded. A wildcard offers the document representations only;
+it never selects the result envelope.
+
+If a client names every supported representation and sets `q=0` on all of them,
+the header is forwarded to the gatekeeper unchanged so it can answer `406`,
+rather than the driver picking something that was explicitly refused.
+
+`application/did+ld+json` and `application/did+json` are DID **document**
+representation media types, while this endpoint returns the resolution result
+triple. A client that wants the body labelled for what it is asks for
+`application/did-resolution`. The document types stay the default, because that
+is what Universal Resolver clients expect.
+
+The `Content-Type` is whatever the gatekeeper returned, not a value derived from
+`didResolutionMetadata.contentType` — that field describes the representation of
+the DID document *inside* the envelope, so using it as the HTTP header describes
+the body as a document when it is a triple.
+
+An unrecognised `Accept` is answered with the default rather than `406`. The
+gatekeeper is stricter, but the Universal Resolver sends headers whose
+conventions this driver does not control, and refusing one it has not been
+taught about is worse than answering with something the caller can read. A
+`406` from the gatekeeper is still relayed as a `406`.
+
+Responses set `Vary: Accept`.
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4250` | Port the driver listens on. |
 | `ARCHON_GATEKEEPER_URL` | `https://archon.technology` | Base URL of the Archon gatekeeper. The driver calls `${ARCHON_GATEKEEPER_URL}/1.0/identifiers/{did}`. |
+
+## Tests
+
+```bash
+npm ci
+npm test
+```
+
+`node --test`, with no test framework: the driver's only runtime dependency is
+express, and the suite keeps it that way. It stands up a stub gatekeeper
+in-process, so it needs no network, no credentials and no running node — which
+is what lets CI gate every push.
 
 ## Running Locally (Node.js)
 
