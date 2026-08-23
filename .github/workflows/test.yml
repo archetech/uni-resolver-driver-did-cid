@@ -1,0 +1,25 @@
+name: Tests
+
+# Runs on every push and pull request. The suite needs no services and no
+# registry credentials: it stands up a stub gatekeeper in-process, so it is
+# quick enough to gate every change.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # Matches the Dockerfile's base image, so the tests run against the
+          # runtime the driver actually ships on.
+          node-version: '20'
+
+      - run: npm ci
+
+      - run: npm test

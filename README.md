@@ -89,6 +89,18 @@ Responses set `Vary: Accept`.
 | `PORT` | `4250` | Port the driver listens on. |
 | `ARCHON_GATEKEEPER_URL` | `https://archon.technology` | Base URL of the Archon gatekeeper. The driver calls `${ARCHON_GATEKEEPER_URL}/1.0/identifiers/{did}`. |
 
+## Tests
+
+```bash
+npm ci
+npm test
+```
+
+`node --test`, with no test framework: the driver's only runtime dependency is
+express, and the suite keeps it that way. It stands up a stub gatekeeper
+in-process, so it needs no network, no credentials and no running node — which
+is what lets CI gate every push.
+
 ## Running Locally (Node.js)
 
 Requires Node.js 20+ (the driver uses the global `fetch` API).

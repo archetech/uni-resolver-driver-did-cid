@@ -114,4 +114,10 @@ app.get('/1.0/identifiers/:did', async (req, res) => {
 // Methods endpoint
 app.get('/1.0/methods', (req, res) => res.json(['cid']));
 
-app.listen(PORT, () => console.log(`did:cid driver v${version} on :${PORT} → ${GATEKEEPER_URL}`));
+// Only listen when run directly, so the tests can mount the app on an ephemeral
+// port instead of racing the real one.
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`did:cid driver v${version} on :${PORT} → ${GATEKEEPER_URL}`));
+}
+
+module.exports = app;
