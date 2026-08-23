@@ -5,14 +5,33 @@ const app = express();
 const PORT = process.env.PORT || 4250;
 const GATEKEEPER_URL = process.env.ARCHON_GATEKEEPER_URL || 'https://archon.technology';
 
-// Representations this driver understands; anything else falls back to did+ld+json.
+// Media types this driver understands.
+//
+// did+ld+json and did+json describe a DID *document*; a resolution result is the
+// {didDocument, didResolutionMetadata, didDocumentMetadata} triple, for which the
+// DID Resolution binding specifies application/did-resolution. This driver used
+// to label the triple with a document type in every case, reproducing the
+// gatekeeper's own deviation outward -- so fixing the gatekeeper alone changed
+// nothing that a Universal Resolver client could see. See archetech/archon#770.
 const DID_LD_JSON = 'application/did+ld+json';
 const DID_JSON = 'application/did+json';
+const DID_RESOLUTION = 'application/did-resolution';
 
-// Choose the representation to request from (and return to) the client.
+// What to ask the gatekeeper for. A client gets what it names; anything else --
+// absent, a wildcard, or a media type this driver does not know -- keeps the
+// existing did+ld+json default.
+//
+// Deliberately NOT 406 on an unknown type, even though the gatekeeper now does
+// that: the Universal Resolver sends Accept headers whose conventions we do not
+// control, and a driver that rejects one it has not been taught about is worse
+// than one that answers with a representation the caller can read. A client that
+// wants strict negotiation should talk to the gatekeeper directly.
 function pickRepresentation(acceptHeader) {
   const accept = (acceptHeader || '').toLowerCase();
-  // did+json is not a substring of did+ld+json, so this match is unambiguous.
+  // Most specific first: did+json is not a substring of did+ld+json, but
+  // did-resolution must be checked before either so an explicit request for the
+  // result envelope is not shadowed by a document type in the same header.
+  if (accept.includes(DID_RESOLUTION)) return DID_RESOLUTION;
   if (accept.includes(DID_JSON)) return DID_JSON;
   return DID_LD_JSON;
 }
@@ -77,8 +96,18 @@ app.get('/1.0/identifiers/:did', async (req, res) => {
   // (falling back to the upstream status if the gatekeeper does signal one).
   const error = result?.didResolutionMetadata?.error;
   const status = error ? statusForError(error) : (upstream.ok ? 200 : 502);
-  const contentType = result?.didResolutionMetadata?.contentType || accept;
 
+  // Label the response the way the gatekeeper labelled it. Deriving from
+  // didResolutionMetadata.contentType instead was the bug: that field reports the
+  // representation of the DID *document* inside the envelope, so using it as the
+  // HTTP Content-Type describes the body as a document when it is a triple.
+  const upstreamContentType = upstream.headers.get('content-type');
+  const contentType = upstreamContentType
+    ? upstreamContentType.split(';')[0].trim()
+    : (result?.didResolutionMetadata?.contentType || accept);
+
+  // Vary, because the response was selected by Accept.
+  res.vary('Accept');
   res.status(status).type(error ? DID_LD_JSON : contentType).json(result);
 });
 
