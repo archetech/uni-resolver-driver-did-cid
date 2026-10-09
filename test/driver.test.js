@@ -283,6 +283,52 @@ test('answers 502 when the gatekeeper returns something that is not JSON', async
     assert.match(body.didResolutionMetadata.errorMessage, /non-JSON/);
 });
 
+// --- DID URL passthrough (0.2.1) ---
+
+// A version/service query must reach the gatekeeper; the old single-segment
+// route read only the DID and dropped everything after it.
+test('passes the query string through to the gatekeeper', async () => {
+    await fetch(`${baseUrl}/1.0/identifiers/${DID}?versionId=abc&service=files`);
+    assert.equal(lastRequest.url, `/1.0/identifiers/${DID}?versionId=abc&service=files`);
+});
+
+// A DID URL with a path (dereferencing) must reach the gatekeeper too; the old
+// route returned 404 locally because ":did" matched a single path segment.
+test('passes a DID-URL dereferencing path through to the gatekeeper', async () => {
+    await fetch(`${baseUrl}/1.0/identifiers/${DID}/data`);
+    assert.equal(lastRequest.url, `/1.0/identifiers/${DID}/data`);
+});
+
+// A dereferencing result carries dereferencingMetadata rather than
+// didResolutionMetadata; its error maps to the HTTP status the same way.
+test('maps a dereferencing error to the expected status', async () => {
+    reply = () => ({
+        status: 200,
+        contentType: 'application/did+ld+json',
+        body: { dereferencingMetadata: { error: 'notFound' }, contentStream: null, contentMetadata: {} },
+    });
+
+    const response = await fetch(`${baseUrl}/1.0/identifiers/${DID}/data`);
+    assert.equal(response.status, 404);
+});
+
+// Dereferenced content is not a DID document, so it is relayed under the
+// gatekeeper's own Content-Type rather than a did+*json type.
+test('relays dereferenced content with the gatekeeper Content-Type', async () => {
+    reply = () => ({
+        status: 200,
+        contentType: 'application/json',
+        body: { backupStore: 'did:cid:bagaaieraexamplebackupstore' },
+    });
+
+    const response = await fetch(`${baseUrl}/1.0/identifiers/${DID}/data`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type').split(';')[0], 'application/json');
+    assert.equal(body.backupStore, 'did:cid:bagaaieraexamplebackupstore');
+});
+
 test('serves health and the method list', async () => {
     const health = await (await fetch(`${baseUrl}/health`)).json();
     assert.equal(health.status, 'ok');
