@@ -41,6 +41,7 @@ did:cid:bagaaierajzwcicueqdkbgk75lgekdmvtbo5zv3spq2p4f7d7ow42urlwi32a
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/1.0/identifiers/{did}` | GET | Resolve a `did:cid` and return a DID Resolution Result. Honors `Accept: application/did+ld+json` (default) or `application/did+json`; the client's `Accept` is forwarded to the gatekeeper and the returned `didResolutionMetadata.contentType` is echoed. |
+| `/1.0/identifiers/{did}/{path}` | GET | Dereference a DID URL (e.g. `…/data`, `…/registration`). The path **and** any query string (`?versionId`, `?versionTime`, `?service`, …) are passed through to the gatekeeper unchanged, and its DID URL Dereferencing Result is relayed (`dereferencingMetadata.error` maps to the HTTP status, like resolution). |
 | `/1.0/methods` | GET | List supported DID methods — returns `["cid"]`. |
 | `/health` | GET | Liveness probe — returns `{ status, driver, version, gatekeeper }`. |
 
@@ -80,12 +81,12 @@ curl http://localhost:4250/1.0/identifiers/did:cid:bagaaieraxdxq4fm2kjh6yqjxjor3
 
 ```bash
 # Build
-docker build -t ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0 .
+docker build -t ghcr.io/archetech/uni-resolver-driver-did-cid:0.2.0 .
 
 # Run
 docker run -p 4250:4250 \
   -e ARCHON_GATEKEEPER_URL=https://archon.technology \
-  ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0
+  ghcr.io/archetech/uni-resolver-driver-did-cid:0.2.0
 
 # Resolve a DID
 curl http://localhost:4250/1.0/identifiers/did:cid:bagaaieraxdxq4fm2kjh6yqjxjor3t2idczkmxd4v7in4u353fa6m6sms2pnq
@@ -102,7 +103,7 @@ This driver is wired into the Universal Resolver across the three configuration 
 
 ```yaml
   driver-did-cid:
-    image: ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0
+    image: ghcr.io/archetech/uni-resolver-driver-did-cid:0.2.0
     environment:
       ARCHON_GATEKEEPER_URL: ${uniresolver_driver_did_cid_gatekeeper_url}
     ports:
@@ -161,10 +162,10 @@ Anyone with push access to this repo can cut a release — the workflow authenti
 built-in `GITHUB_TOKEN`, so no personal registry key is required:
 
 ```bash
-# 1. Bump "version" in package.json (e.g. to 0.1.0) and commit it.
+# 1. Bump "version" in package.json (e.g. to 0.2.0) and commit it.
 # 2. Tag the release and push the tag:
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 It can also be run from the **Actions** tab via *workflow_dispatch* (optionally overriding the version).
@@ -178,9 +179,9 @@ public.
 <summary>Manual publish (fallback, requires a token with <code>write:packages</code>)</summary>
 
 ```bash
-docker build -t ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0 .
+docker build -t ghcr.io/archetech/uni-resolver-driver-did-cid:0.2.0 .
 echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-username> --password-stdin
-docker push ghcr.io/archetech/uni-resolver-driver-did-cid:0.1.0
+docker push ghcr.io/archetech/uni-resolver-driver-did-cid:0.2.0
 ```
 </details>
 

@@ -1,6 +1,6 @@
 {
   "name": "uni-resolver-driver-did-cid",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Universal Resolver driver for did:cid (Archon Protocol)",
   "main": "server.js",
   "scripts": {
